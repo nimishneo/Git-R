@@ -1,0 +1,113 @@
+---
+title: "A quick look at the first 2016 presidential debate"
+author: "Megan Risdal"
+date: "27 September 2016"
+output:
+  html_document:
+    fig_width: 10
+    fig_height: 6
+    theme: spacelab
+    highlight: kate
+---
+
+Just kidding with the Kernel title. Welcome to this brief analysis of the transcript from the first 2016 presidential debate!
+
+```{r, message = F, warning = F}
+# Load libraries
+library(dplyr)
+library(ggplot2)
+library(gridExtra)
+library(tidytext)
+
+debate <- read.csv("../input/debate.csv", h =T, stringsAsFactors = F)
+```
+
+How were the speakers synced with respect to response length? Here I use word count against `Line` as a proxy for time.
+
+
+```{r, message = F, warning = F}
+
+debate <- debate %>% 
+	mutate(word_count = sapply(gregexpr("[[:alpha:]]+", Text), function(x) sum(x > 0)))
+
+ggplot(debate %>% filter(Speaker %in% c("Clinton", "Trump")), 
+	aes(x = Line, y = word_count, fill = Speaker)) + 
+
+	geom_bar(stat="identity") + 
+
+	scale_x_continuous(breaks = seq(0, nrow(debate), 25)) +
+
+	labs(x = "Time (Line in Transcript)", 
+		 y = "Word Count in Candidate Response", 
+		 title = "Candidates' Response Lengths over Time") +
+
+	scale_fill_manual(values = c("#4169E1", "#E91D0E"))
+```
+
+What about simply looking at the distribution of their response lengths?
+
+```{r, message = F, warning = F}
+
+ggplot(debate %>% filter(Speaker %in% c("Clinton", "Trump")), 
+	aes(x = Speaker, y = word_count, fill = Speaker)) +
+
+	geom_boxplot() +
+
+	#scale_y_log10() +
+
+	labs(x = "Candidate", 
+		 y = "Word Count in Candidate Responses", 
+		 title = "Distribution of Candidates' Response Lengths") +
+
+	scale_fill_manual(values = c("#4169E1", "#E91D0E"))
+
+```
+
+One thing I've wanted to try is tf-idf using tidy data principles as nicely demonstrated in Julia Silge's blog here: http://juliasilge.com/blog/Term-Frequency-tf-idf/ using her `tidytext` library.
+
+
+```{r, message = F, warning = F}
+# Calculate word frequencies
+debate_words <- debate %>%
+	filter(Speaker %in% c("Clinton", "Trump")) %>%
+    unnest_tokens(word, Text) %>%
+    count(Speaker, word, sort = TRUE) %>%
+    ungroup()
+
+# Calculate tf-idf
+debate_words <- debate_words %>%
+    bind_tf_idf(word, Speaker, n) %>%
+    arrange(desc(tf_idf)) %>%
+    mutate(word = factor(word, levels = rev(unique(word))))
+
+# Create plots of the tf-idf for each candidate
+# Clinton
+clinton <- ggplot(debate_words %>% 
+	   filter(Speaker == "Clinton") %>% 
+	   top_n(10),
+	aes(x = word, y = tf_idf)) +
+	geom_bar(aes(alpha = tf_idf), 
+		stat="identity", 
+		fill = "#4169E1") +
+	coord_flip() +
+	#scale_y_continuous(limits = c(0, 0.002)) +
+	labs(x = NULL, y = "tf-idf", title = "Clinton") +
+	scale_alpha_continuous(range = c(0.6, 1), guide = FALSE)
+
+# Trump
+trump <- ggplot(debate_words %>% 
+	   filter(Speaker == "Trump") %>% 
+	   top_n(10),
+	aes(x = word, y = tf_idf)) +	
+	geom_bar(aes(alpha = tf_idf), 
+		stat="identity", 
+		fill = "#E91D0E") +
+	coord_flip() +
+	labs(x = NULL, y = "tf-idf", title = "Trump") +
+	scale_alpha_continuous(range = c(0.6, 1), guide = FALSE)
+
+# Plot
+grid.arrange(clinton, trump, ncol = 2)
+```
+
+And there you have it! Hope you enjoy this dataset. Stay tuned for the next debate.
